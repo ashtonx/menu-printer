@@ -5,92 +5,141 @@
 #include <map>
 #include <string>
 #include <vector>
+
 // overkill app to format and merge downloaded diet pdfs into printable version
 // to learn/practice some c++17 and spend less time preparing printable output
 using file_time_type = std::chrono::time_point<std::chrono::system_clock>;
+
+Date const CURRENT_DATE = getCurrentDate();
 int main()
 {
-  std::vector<std::filesystem::directory_entry> leftoverFiles;
   std::filesystem::path const searchDir{ defaultSettings::DOWNLOAD_PATH };
-  std::vector<std::filesystem::directory_entry> foundFiles =
-      findFiles(searchDir, defaultSettings::searches, leftoverFiles);
+
+  std::vector<std::vector<std::filesystem::directory_entry>> files = findFiles(searchDir, defaultSettings::searches);
+  sortFiles(files);
 
   return 0;
 }
 
-std::vector<std::filesystem::directory_entry> findFiles(std::filesystem::path const &directoryPath,
-                                                        std::array<std::string_view, 2> const &search,
-                                                        std::vector<std::filesystem::directory_entry> &leftoverFilesRef)
+std::vector<std::vector<std::filesystem::directory_entry>> findFiles(std::filesystem::path const &directoryPath,
+                                                                     std::array<std::string_view, 2> const &search)
 {
-  std::vector<std::filesystem::directory_entry> results;
+  std::vector<std::vector<std::filesystem::directory_entry>> foundFiles;
+  for (int i = 0; i < 3; ++i) {
+    std::vector<std::filesystem::directory_entry> tmp;
+    foundFiles.push_back(tmp);
+  }
 
-  if (!debug::checkIfExists(directoryPath, "findFiles()")) return results;
+  if (!debug::checkIfExists(directoryPath, "findFiles()")) return foundFiles;
 
+  // find all files that mach search strings
   for (std::filesystem::directory_entry const entry : std::filesystem::directory_iterator(directoryPath)) {
-    if (entry.is_regular_file()) {
-      if (entry.path().extension() == defaultSettings::FILE_EXT) {
-        std::string fileName = entry.path().filename();
-        for (auto s : search) {
-          if (fileName.find(s) != std::string::npos) {
-            if (checkIfFileIsRecent(entry.last_write_time())) {
-              std::cerr << "file is recent " << entry.path().filename().string() << '\n';
-              results.push_back(entry);
-            } else {
-              std::cerr << "file is old " << entry.path().filename().string() << '\n';
-              (leftoverFilesRef.push_back(entry));
+    if (entry.is_regular_file() && entry.path().extension() == defaultSettings::FILE_EXT) {
+      for (int i = 0; i < search.size(); ++i) {
+        if (entry.path().filename().string().find(search[i]) != std::string::npos) { // 0 shopping list
+          if (!checkIfFileIsRecent(entry.last_write_time())) {                       // if file is older than week
+            (foundFiles[FOUND_FILES::LEFTOVER].push_back(entry));
+          } else {
+            if (i == 0) { // 0 == shopping list file
+              foundFiles[FOUND_FILES::LIST].push_back(entry);
+            } else { // menu files
+              foundFiles[FOUND_FILES::MENU].push_back(entry);
             }
           }
         }
       }
     }
   }
-  return results;
+  return foundFiles;
 }
 
-void sortFiles(std::vector<std::filesystem::directory_entry> const &files,
-               std::array<std::string_view, 2> const &search,
-               std::vector<std::filesystem::directory_entry> &leftoverFilesRef)
+void sortFiles(std::vector<std::vector<std::filesystem::directory_entry>> filesToSort)
 {
-  // todo: consider directory entries for date comparison between files
-
-  std::vector<std::string> const date = getCurrentDate();
-  std::vector<ShoppingList> shoppingList;
-  std::map<std::string, std::string> menu;
-  std::vector<std::string> leftovers;
+  std::filesystem::directory_entry shoppingList;
+  std::map<Date, std::filesystem::directory_entry> menuFiles;
+  std::vector<std::filesystem::directory_entry> leftoverFiles;
   bool yearChange = false;
 
-  for (std::filesystem::directory_entry entry : files) {
-    std::string fileName               = entry.path().filename();
-    std::vector<std::string> tokenized = tokenizeString(fileName);
-    if (fileName.find(defaultSettings::searches[0]) != std::string::npos) {
-      // Shopping List found
-      ShoppingList shop;
-      shop.FilePath   = entry.path();
-      shop.TimeStamp  = entry.last_write_time();
-      shop.MonthStart = tokenized[FILE_FORMAT::MONTH_START];
-      shop.DayStart   = tokenized[FILE_FORMAT::DAY_START];
-      shop.MonthEnd   = tokenized[FILE_FORMAT::MONTH_END];
-      shop.DayEnd     = tokenized[FILE_FORMAT::DAY_END];
-      shop.YearEnd = shop.YearEnd = std::stoi(date[2]);
-      if (shop.MonthStart == "12" && shop.MonthEnd == "01") ++shop.YearEnd;
-      shoppingList.push_back(shop);
-    } else {
-      // todo: year issue persists... need to eliminate dupes before sorting shopping files..
+  // move leftovers first
+  // for (auto leftover : filesToSort[FOUND_FILES::LEFTOVER]) {
+  //   leftoverFiles.push_back(leftover);
+  // }
+
+  // find menu;
+  // todo optimize ifs
+  shoppingList = filesToSort[0][0];
+  for (auto entry : filesToSort[0]) {
+    if (entry.last_write_time() > shoppingList.last_write_time()) {
+      leftoverFiles.push_back(shoppingList);
+      shoppingList = entry;
+    } else if (entry.last_write_time() < shoppingList.last_write_time()) {
+      leftoverFiles.push_back(entry);
     }
   }
-  if (shoppingList.size() > 1) // too many files try to get right one
-  {
-    // later
+
+  yearChange = checkIfYearChange(shoppingList);
+
+  Date max = parseDate(shoppingList.path().filename().string(), yearChange, true);
+  Date min = parseDate(shoppingList.path().filename().string(), yearChange, false);
+
+  for (auto entry : filesToSort[FOUND_FILES::MENU]) {
+    Date tmpDate = parseDate(entry.path().filename().string(), yearChange, false);
+
+    if (tmpDate >= min || tmpDate <= max) {
+      if (menuFiles.count(tmpDate) == 0) {
+        menuFiles[tmpDate] = entry;
+      } else {
+        if (menuFiles[tmpDate].last_write_time() < entry.last_write_time()) {
+          leftoverFiles.push_back(menuFiles[tmpDate]);
+          menuFiles[tmpDate] = entry;
+        } else {
+          leftoverFiles.push_back(entry);
+        }
+      }
+    } else
+      leftoverFiles.push_back(entry);
+  }
+
+  // debug sort
+
+  for (auto file : filesToSort[FOUND_FILES::LIST]) {
+    std::cout << "Shopping List Files: " << file.path().filename().string() << '\n';
+  }
+  std::cout << "\n-----\n"
+            << "Shopping List File PICKED:  " << shoppingList.path().filename().string() << '\n'
+            << "-----\n";
+
+  std::cout << "\n\n";
+  for (auto file : filesToSort[FOUND_FILES::MENU]) {
+    std::cout << "Menu Files: " << file.path().filename().string() << '\n';
+  }
+  std::cout << "\n-----\n"
+            << "MENU FILES MATCHED: \n"
+            << "-----\n";
+  for (auto file : menuFiles) {
+    std::cout << '\t' << file.second.path().filename().string() << '\n';
+  }
+
+  std::cout << "\n\n";
+  for (auto file : filesToSort[FOUND_FILES::LEFTOVER]) {
+    std::cout << "Leftover Files: " << file.path().filename().string() << '\n';
+  }
+  std::cout << "-----\n"
+            << "LEFTOVER FILES AFTER SORTING:\n"
+            << "-----\n";
+  for (auto file : leftoverFiles) {
+    std::cout << "leftover picked: " << file.path().filename().string() << '\n';
   }
 }
 
-std::vector<std::string> getCurrentDate()
+Date getCurrentDate()
 {
   std::time_t t     = std::time(nullptr);
   std::tm localtime = *std::localtime(&t);
   std::stringstream buffer;
   buffer << std::put_time(&localtime, "%d.%m.%Y");
-  return tokenizeString(buffer.str());
+  std::vector<std::string> str = tokenizeString(buffer.str());
+  return Date{ std::stoi(str[2]), std::stoi(str[1]), std::stoi(str[0]) };
 }
 
 bool checkIfFileIsRecent(std::filesystem::file_time_type fileWriteTime)
@@ -101,6 +150,12 @@ bool checkIfFileIsRecent(std::filesystem::file_time_type fileWriteTime)
       std::filesystem::file_time_type::clock::now() - std::chrono::hours(7 * 24);
   if (timeRange > fileWriteTime) return false;
   return true;
+}
+
+bool checkIfYearChange(std::filesystem::directory_entry const &entry)
+{
+  std::vector<std::string> tok = tokenizeString(entry.path().filename());
+  return (tok[FILE_FORMAT::MONTH_START] == "12" && tok[FILE_FORMAT::MONTH_END] == "01");
 }
 
 std::vector<std::string> tokenizeString(std::string string)
@@ -116,9 +171,14 @@ std::vector<std::string> tokenizeString(std::string string)
   return tmp;
 }
 
-std::string parseDate(std::string_view const &filename, bool range)
+Date parseDate(std::string_view const &filename, bool yearChange, bool max)
 {
-  std::vector<std::string> tokenizedString = tokenizeString(static_cast<std::string>(filename));
-  std::string date{ tokenizedString[FILE_FORMAT::MONTH_START] + tokenizedString[FILE_FORMAT::DAY_START] };
-  return date;
+  Date result;
+  std::vector<std::string> tok = tokenizeString(static_cast<std::string>(filename));
+  int month                    = max ? FILE_FORMAT::MONTH_END : FILE_FORMAT::MONTH_START;
+  int day                      = max ? FILE_FORMAT::DAY_END : FILE_FORMAT::DAY_START;
+  result.month                 = std::stoi(tok[month]);
+  result.day                   = std::stoi(tok[day]);
+  result.year                  = (result.month == 1 && yearChange) ? CURRENT_DATE.year + 1 : CURRENT_DATE.year;
+  return result;
 }

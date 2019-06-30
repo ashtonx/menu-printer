@@ -24,6 +24,27 @@ constexpr int OUT_OF_DATE_RANGE{ 7 };
 } // namespace defaultSettings
 
 enum FILE_FORMAT { FILE_NAME, DAY_START, MONTH_START, DAY_END, MONTH_END, FILE_EXTENSION };
+enum FOUND_FILES { LIST, MENU, LEFTOVER };
+struct Date {
+  int year;
+  int month;
+  int day;
+
+  bool operator>(const Date &b) const
+  {
+    if (year > b.year) return true;
+    if (year == b.year) {
+      if (month > b.month) return true;
+      if (month == b.month && day > b.day) return true;
+    }
+    return false;
+  }
+  bool operator<(const Date &b) const { return !(*this > b); }
+  bool operator==(const Date &b) const { return (year == b.year && month == b.month && day == b.day); }
+  bool operator!=(const Date &b) const { return !(*this == b); }
+  bool operator<=(const Date &b) const { return (*this < b || *this == b); }
+  bool operator>=(const Date &b) const { return (*this > b || *this == b); }
+};
 
 struct ShoppingList {
   std::string FilePath;
@@ -40,18 +61,14 @@ struct ShoppingList {
 // }
 
 // functions
-std::vector<std::string> getCurrentDate();
+Date getCurrentDate();
 bool checkIfFileIsRecent(std::filesystem::file_time_type fileWriteTime);
-
+bool checkIfYearChange(std::filesystem::directory_entry const &entry);
 std::vector<std::string> tokenizeString(std::string string);
-std::string parseDate(std::string_view const &filename, bool range = false);
-
-std::vector<std::filesystem::directory_entry> findFiles(
-    std::filesystem::path const &directoryPath, std::array<std::string_view, 2> const &search,
-    std::vector<std::filesystem::directory_entry> &leftoverFilesRef);
-void sortFiles(std::vector<std::filesystem::directory_entry> const &files,
-               std::array<std::string_view, 2> const &search,
-               std::vector<std::filesystem::directory_entry> &leftoverFilesRef);
+Date parseDate(std::string_view const &filename, bool yearChange = false, bool max = false);
+std::vector<std::vector<std::filesystem::directory_entry>> findFiles(std::filesystem::path const &directoryPath,
+                                                                     std::array<std::string_view, 2> const &search);
+void sortFiles(std::vector<std::vector<std::filesystem::directory_entry>> filesToSort);
 
 namespace debug {
 bool checkIfExists(std::filesystem::path const &path, std::string function)
