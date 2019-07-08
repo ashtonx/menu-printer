@@ -1,11 +1,13 @@
 #include "main.hpp"
+#include <boost/process.hpp>
+#include <cassert>
 #include <chrono>
 #include <filesystem>
 #include <iostream>
 #include <map>
+#include <regex>
 #include <string>
 #include <vector>
-
 // overkill app to format and merge downloaded diet pdfs into printable version
 // to learn/practice some c++17 and spend less time preparing printable output
 using file_time_type = std::chrono::time_point<std::chrono::system_clock>;
@@ -13,12 +15,21 @@ using file_time_type = std::chrono::time_point<std::chrono::system_clock>;
 Date const CURRENT_DATE = getCurrentDate();
 int main()
 {
-  std::filesystem::path const searchDir{ defaultSettings::DOWNLOAD_PATH };
-
-  std::vector<std::vector<std::filesystem::directory_entry>> files = findFiles(searchDir, defaultSettings::searches);
-  sortFiles(files);
-
+  test();
+  namespace fs = std::filesystem;
+  std::vector<std::vector<fs::directory_entry>> files =
+      findFiles(defaultSettings::DOWNLOAD_PATH, defaultSettings::searches);
+  fs::directory_entry shoppingList;
+  std::map<Date, fs::directory_entry> menuFiles;
+  std::vector<fs::directory_entry> leftoverFiles;
+  std::tie(shoppingList, menuFiles, leftoverFiles) = sortFiles(files);
+  processFiles(shoppingList, menuFiles, leftoverFiles);
   return 0;
+}
+
+void test()
+{
+  // for rewriting code
 }
 
 std::vector<std::vector<std::filesystem::directory_entry>> findFiles(std::filesystem::path const &directoryPath,
@@ -29,8 +40,7 @@ std::vector<std::vector<std::filesystem::directory_entry>> findFiles(std::filesy
     std::vector<std::filesystem::directory_entry> tmp;
     foundFiles.push_back(tmp);
   }
-
-  if (!debug::checkIfExists(directoryPath, "findFiles()")) return foundFiles;
+  assert(std::filesystem::exists(directoryPath));
 
   // find all files that mach search strings
   for (std::filesystem::directory_entry const entry : std::filesystem::directory_iterator(directoryPath)) {
@@ -53,17 +63,21 @@ std::vector<std::vector<std::filesystem::directory_entry>> findFiles(std::filesy
   return foundFiles;
 }
 
-void sortFiles(std::vector<std::vector<std::filesystem::directory_entry>> filesToSort)
+std::tuple<std::filesystem::directory_entry, std::map<Date, std::filesystem::directory_entry>,
+           std::vector<std::filesystem::directory_entry>>
+sortFiles(std::vector<std::vector<std::filesystem::directory_entry>> filesToSort)
 {
-  std::filesystem::directory_entry shoppingList;
-  std::map<Date, std::filesystem::directory_entry> menuFiles;
-  std::vector<std::filesystem::directory_entry> leftoverFiles;
+  namespace fs = std::filesystem;
+
+  fs::directory_entry shoppingList;
+  std::map<Date, fs::directory_entry> menuFiles;
+  std::vector<fs::directory_entry> leftoverFiles;
   bool yearChange = false;
 
   // move leftovers first
-  // for (auto leftover : filesToSort[FOUND_FILES::LEFTOVER]) {
-  //   leftoverFiles.push_back(leftover);
-  // }
+  for (auto leftover : filesToSort[FOUND_FILES::LEFTOVER]) {
+    leftoverFiles.push_back(leftover);
+  }
 
   // find menu;
   // todo optimize ifs
@@ -99,37 +113,7 @@ void sortFiles(std::vector<std::vector<std::filesystem::directory_entry>> filesT
     } else
       leftoverFiles.push_back(entry);
   }
-
-  // debug sort
-
-  for (auto file : filesToSort[FOUND_FILES::LIST]) {
-    std::cout << "Shopping List Files: " << file.path().filename().string() << '\n';
-  }
-  std::cout << "\n-----\n"
-            << "Shopping List File PICKED:  " << shoppingList.path().filename().string() << '\n'
-            << "-----\n";
-
-  std::cout << "\n\n";
-  for (auto file : filesToSort[FOUND_FILES::MENU]) {
-    std::cout << "Menu Files: " << file.path().filename().string() << '\n';
-  }
-  std::cout << "\n-----\n"
-            << "MENU FILES MATCHED: \n"
-            << "-----\n";
-  for (auto file : menuFiles) {
-    std::cout << '\t' << file.second.path().filename().string() << '\n';
-  }
-
-  std::cout << "\n\n";
-  for (auto file : filesToSort[FOUND_FILES::LEFTOVER]) {
-    std::cout << "Leftover Files: " << file.path().filename().string() << '\n';
-  }
-  std::cout << "-----\n"
-            << "LEFTOVER FILES AFTER SORTING:\n"
-            << "-----\n";
-  for (auto file : leftoverFiles) {
-    std::cout << "leftover picked: " << file.path().filename().string() << '\n';
-  }
+  return std::make_tuple(shoppingList, menuFiles, leftoverFiles);
 }
 
 Date getCurrentDate()
@@ -182,3 +166,114 @@ Date parseDate(std::string_view const &filename, bool yearChange, bool max)
   result.year                  = (result.month == 1 && yearChange) ? CURRENT_DATE.year + 1 : CURRENT_DATE.year;
   return result;
 }
+
+// File operations
+std::string executeProcess(std::string exec, std::vector<std::string> args)
+{
+  std::string command{ exec };
+  for (auto arg : args) {
+    command += (" " + arg);
+  }
+
+  std::cout << "executeProcess() command: " << command << '\n';
+  boost::process::ipstream pipe_stream;
+  boost::process::child c(command, boost::process::std_out > pipe_stream);
+  c.wait();
+  std::string line;
+  std::string result;
+  while (pipe_stream && std::getline(pipe_stream, line) && !line.empty()) {
+    result += line + '\n';
+  }
+  std::cout << "execProcess output: " << result;
+  c.exit_code();
+
+  return result;
+}
+
+int getPageCount(std::filesystem::directory_entry entry)
+{
+  std::vector<std::string> args;
+  args.push_back(entry.path().string());
+  // args.push_back(" | grep Pages:");
+  std::string output = executeProcess("pdfinfo", args);
+  std::smatch match;
+  // std::regex pages(".+Pages.+(\\d).+");
+  if (std::regex_search(output, match, std::regex("Pages.+(\\d)"))) {
+    return std::stoi(match[1]);
+  }
+
+  return -1;
+}
+
+std::filesystem::path getBlankPage()
+{
+  namespace fs = std::filesystem;
+
+  fs::path workdir{ defaultSettings::WORKDIR };
+  fs::path result = workdir / "blank.pdf";
+  if (fs::exists(result)) return result;
+  // echo showpage | ps2pdf -sPAPERSIZE=letter - blank.pdf blank pdf
+  // figure out later
+  assert(fs::exists(result));
+  return result;
+}
+
+void processFiles(std::filesystem::directory_entry shoppingList, std::map<Date, std::filesystem::directory_entry> menu,
+                  std::vector<std::filesystem::directory_entry> leftoverFiles)
+{
+  namespace fs     = std::filesystem;
+  fs::path workDir = fs::path(defaultSettings::WORKDIR);
+  assert(fs::exists(workDir));
+
+  fs::path tmpDir = workDir / defaultSettings::TMP_DIR;
+  if (!fs::exists(tmpDir)) fs::create_directory(tmpDir);
+  assert(fs::exists(tmpDir));
+  fs::path archiveDir = workDir / defaultSettings::ARCHIVE_DIR;
+  assert(fs::exists(archiveDir));
+
+  // clean up tmpdir
+  for (fs::directory_entry entry : fs::directory_iterator(tmpDir)) {
+    fs::remove_all(entry);
+  }
+  // copy files
+  for (auto file : menu) {
+    fs::copy(file.second, tmpDir);
+  }
+
+  fs::path processed = tmpDir / "processed";
+  fs::path blankPage = getBlankPage();
+  fs::create_directory(processed);
+  for (fs::directory_entry entry : fs::directory_iterator(tmpDir)) {
+    if (fs::is_regular_file(entry)) {
+      if (getPageCount(entry) == 2)
+        fs::rename(entry, processed / entry.path().filename());
+      else {
+        std::vector<std::string> args;
+        args.push_back(entry.path().string());
+        args.push_back(blankPage.string());
+        args.push_back(processed.string() + '/' + entry.path().filename().string());
+        std::cout << executeProcess("pdfunite", args) << '\n';
+        fs::remove(entry);
+      }
+    }
+  }
+
+  // merging files
+  std::vector<std::string> filesToMerge;
+  for (fs::directory_entry entry : fs::directory_iterator(processed)) {
+    filesToMerge.push_back(entry.path().string());
+  }
+  Date min                  = parseDate(shoppingList.path().filename().string(), false);
+  Date max                  = parseDate(shoppingList.path().filename().string(), true);
+  std::string finalFileName = "Menu-" + std::to_string(min.month) + '.' + std::to_string(min.day) + "-" +
+                              std::to_string(max.month) + '.' + std::to_string(max.day) + ".pdf";
+  std::string combinedPath = tmpDir.string() + '/' + finalFileName;
+  filesToMerge.push_back(combinedPath);
+  executeProcess("pdfunite", filesToMerge);
+  // cropping
+  std::vector<std::string> cropArgs;
+  cropArgs.push_back(combinedPath);
+  cropArgs.push_back(combinedPath + "-cropped.pdf");
+  executeProcess("pdfcrop", cropArgs);
+}
+// prepareSettings
