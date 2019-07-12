@@ -7,6 +7,7 @@
 #include <map>
 #include <regex>
 #include <string>
+#include <tuple>
 #include <vector>
 // overkill app to format and merge downloaded diet pdfs into printable version
 // to learn/practice some c++17 and spend less time preparing printable output
@@ -16,155 +17,148 @@ Date const CURRENT_DATE = getCurrentDate();
 int main()
 {
   test();
-  namespace fs = std::filesystem;
-  std::vector<std::vector<fs::directory_entry>> files =
-      findFiles(defaultSettings::DOWNLOAD_PATH, defaultSettings::searches);
-  fs::directory_entry shoppingList;
-  std::map<Date, fs::directory_entry> menuFiles;
-  std::vector<fs::directory_entry> leftoverFiles;
-  std::tie(shoppingList, menuFiles, leftoverFiles) = sortFiles(files);
-  processFiles(shoppingList, menuFiles, leftoverFiles);
   return 0;
 }
 
 void test()
 {
+  // init settings
+  Data settings;
+  // main data
+  std::vector<File> files;
+  findFiles(files, settings);
+  sortFiles(files, settings);
+
+  // void sortFiles(&vector<File> &settings)
+
   // for rewriting code
+  // find files
+  // File files = findFiles()
 }
 
-std::vector<std::vector<std::filesystem::directory_entry>> findFiles(std::filesystem::path const &directoryPath,
-                                                                     std::array<std::string_view, 2> const &search)
+void findFiles(std::vector<File> &files, Data const &settings)
 {
-  std::vector<std::vector<std::filesystem::directory_entry>> foundFiles;
-  for (int i = 0; i < 3; ++i) {
-    std::vector<std::filesystem::directory_entry> tmp;
-    foundFiles.push_back(tmp);
-  }
-  assert(std::filesystem::exists(directoryPath));
+  namespace fs = std::filesystem;
+  assert(fs::exists(settings.paths.DownloadedFiles));
+  for (fs::directory_entry const entry : fs::directory_iterator(settings.paths.DownloadedFiles)) {
+    if (entry.is_regular_file() && entry.path().extension() == settings.fileParsing.fileExtension) {
+      for (int i = 0; i < settings.searchStrings.size(); ++i) {
+        if (entry.path().filename().string() == settings.searchStrings[i]) {
+          File newFile;
+          newFile.path    = entry.path().string();
+          newFile.type    = isRecent(entry.last_write_time(), settings) ? File::FileType(i) : File::FileType::leftover;
+          newFile.noPages = getPageCount(entry);
+          newFile.writeTime = entry.last_write_time();
 
-  // find all files that mach search strings
-  for (std::filesystem::directory_entry const entry : std::filesystem::directory_iterator(directoryPath)) {
-    if (entry.is_regular_file() && entry.path().extension() == defaultSettings::FILE_EXT) {
-      for (int i = 0; i < search.size(); ++i) {
-        if (entry.path().filename().string().find(search[i]) != std::string::npos) { // 0 shopping list
-          if (!checkIfFileIsRecent(entry.last_write_time())) {                       // if file is older than week
-            (foundFiles[FOUND_FILES::LEFTOVER].push_back(entry));
+          files.push_back(newFile); // make parse date return File::Date
+        }
+      }
+    }
+  }
+}
+
+void sortFiles(std::vector<File> &files, Data const &settings)
+{
+  std::size_t shoppingListPos;
+  std::map<Date, size_t> menuPos;
+
+  // get shopping list
+  for (size_t i = 0; i < files.size(); ++i) {
+    if (files[i].type == File::FileType::shoppingList) {
+      if (shoppingListPos) {
+        if (files[shoppingListPos].date.start < files[i].date.start) {
+          files[shoppingListPos].type = File::FileType::leftover;
+          shoppingListPos             = i;
+        }
+      } else {
+        shoppingListPos = i;
+      }
+    }
+  }
+  files[shoppingListPos].date =
+      parseDate(std::filesystem::directory_entry(files[shoppingListPos].path).path().filename().string(), settings);
+  bool yearChange = (files[shoppingListPos].date.start.month == 12 && files[shoppingListPos].date.end.month == 1);
+
+  // Get menu files
+  for (size_t i = 0; i < files.size(); ++i) {
+    if (files[i].type == File::FileType::menu) {
+      files[i].date =
+          parseDate(std::filesystem::directory_entry(files[i].path).path().filename().string(), settings, yearChange);
+      Date date = files[i].date.start;
+      // check if in shopping list range
+      if (files[shoppingListPos].date.start > date || files[shoppingListPos].date.end < date) {
+        files[i].type = File::FileType::leftover;
+      } else {
+        if (!menuPos[date]) {
+          menuPos[date] = i;
+        } else {
+          if (files[menuPos[date]].writeTime > files[i].writeTime) {
+            files[i].type = File::FileType::leftover;
           } else {
-            if (i == 0) { // 0 == shopping list file
-              foundFiles[FOUND_FILES::LIST].push_back(entry);
-            } else { // menu files
-              foundFiles[FOUND_FILES::MENU].push_back(entry);
-            }
+            files[menuPos[date]].type = File::FileType::leftover;
+            menuPos[date]             = i;
           }
         }
       }
     }
   }
-  return foundFiles;
 }
 
-std::tuple<std::filesystem::directory_entry, std::map<Date, std::filesystem::directory_entry>,
-           std::vector<std::filesystem::directory_entry>>
-sortFiles(std::vector<std::vector<std::filesystem::directory_entry>> filesToSort)
+File::DateRange parseDate(std::string_view const &filename, Data const &settings, bool yearChange)
 {
-  namespace fs = std::filesystem;
+  File::DateRange result;
 
-  fs::directory_entry shoppingList;
-  std::map<Date, fs::directory_entry> menuFiles;
-  std::vector<fs::directory_entry> leftoverFiles;
-  bool yearChange = false;
+  std::vector<std::string> tok = tokenizeString(static_cast<std::string>(filename), settings.fileParsing.delims);
 
-  // move leftovers first
-  for (auto leftover : filesToSort[FOUND_FILES::LEFTOVER]) {
-    leftoverFiles.push_back(leftover);
+  // todo fix const shit
+  result.start.day   = std::stoi(tok[settings.fileParsing.fileMask["dayStart"].second]);
+  result.end.day     = std::stoi(tok[settings.fileParsing.fileMask["dayEnd"].second]);
+  result.start.month = std::stoi(tok[settings.fileParsing.fileMask["monthStart"].second]);
+  result.end.month   = std::stoi(tok[settings.fileParsing.fileMask["monthEnd"].second]);
+  result.start.year = result.end.year = CURRENT_DATE.year;
+
+  // check for year change
+  if (yearChange) {
+    if (result.start.month == 1) result.start.year++;
+    if (result.end.month == 1) result.end.year++;
   }
 
-  // find menu;
-  // todo optimize ifs
-  shoppingList = filesToSort[0][0];
-  for (auto entry : filesToSort[0]) {
-    if (entry.last_write_time() > shoppingList.last_write_time()) {
-      leftoverFiles.push_back(shoppingList);
-      shoppingList = entry;
-    } else if (entry.last_write_time() < shoppingList.last_write_time()) {
-      leftoverFiles.push_back(entry);
-    }
-  }
-
-  yearChange = checkIfYearChange(shoppingList);
-
-  Date max = parseDate(shoppingList.path().filename().string(), yearChange, true);
-  Date min = parseDate(shoppingList.path().filename().string(), yearChange, false);
-
-  for (auto entry : filesToSort[FOUND_FILES::MENU]) {
-    Date tmpDate = parseDate(entry.path().filename().string(), yearChange, false);
-
-    if (tmpDate >= min || tmpDate <= max) {
-      if (menuFiles.count(tmpDate) == 0) {
-        menuFiles[tmpDate] = entry;
-      } else {
-        if (menuFiles[tmpDate].last_write_time() < entry.last_write_time()) {
-          leftoverFiles.push_back(menuFiles[tmpDate]);
-          menuFiles[tmpDate] = entry;
-        } else {
-          leftoverFiles.push_back(entry);
-        }
-      }
-    } else
-      leftoverFiles.push_back(entry);
-  }
-  return std::make_tuple(shoppingList, menuFiles, leftoverFiles);
+  return result;
 }
 
+// helpers
 Date getCurrentDate()
 {
   std::time_t t     = std::time(nullptr);
   std::tm localtime = *std::localtime(&t);
   std::stringstream buffer;
   buffer << std::put_time(&localtime, "%d.%m.%Y");
-  std::vector<std::string> str = tokenizeString(buffer.str());
+  std::vector<std::string> str = tokenizeString(buffer.str(), ".");
   return Date{ std::stoi(str[2]), std::stoi(str[1]), std::stoi(str[0]) };
 }
 
-bool checkIfFileIsRecent(std::filesystem::file_time_type fileWriteTime)
+bool isRecent(std::filesystem::file_time_type const &time, Data const &settings)
 {
   // todo: figure out how to convert file_time_type clock to normal date and compare days rather than hours
   // also move current date to some const variable
-  std::filesystem::file_time_type timeRange =
-      std::filesystem::file_time_type::clock::now() - std::chrono::hours(7 * 24);
-  if (timeRange > fileWriteTime) return false;
-  return true;
+
+  std::filesystem::file_time_type range =
+      std::filesystem::file_time_type::clock::now() - std::chrono::hours(settings.outOfDateRange * 24);
+  if (time > range) return true;
+  return false;
 }
 
-bool checkIfYearChange(std::filesystem::directory_entry const &entry)
-{
-  std::vector<std::string> tok = tokenizeString(entry.path().filename());
-  return (tok[FILE_FORMAT::MONTH_START] == "12" && tok[FILE_FORMAT::MONTH_END] == "01");
-}
-
-std::vector<std::string> tokenizeString(std::string string)
+std::vector<std::string> tokenizeString(std::string string, std::string_view delims)
 {
   // todo: consider (1) appended to files when dupe
   std::vector<std::string> tmp;
   size_t pos = 0;
-  while ((pos = string.find_first_of(defaultSettings::DELIMS)) != std::string::npos) {
+  while ((pos = string.find_first_of(delims) != std::string::npos) {
     tmp.push_back(string.substr(0, pos));
     string.erase(0, pos + 1);
   }
   tmp.push_back(string);
   return tmp;
-}
-
-Date parseDate(std::string_view const &filename, bool yearChange, bool max)
-{
-  Date result;
-  std::vector<std::string> tok = tokenizeString(static_cast<std::string>(filename));
-  int month                    = max ? FILE_FORMAT::MONTH_END : FILE_FORMAT::MONTH_START;
-  int day                      = max ? FILE_FORMAT::DAY_END : FILE_FORMAT::DAY_START;
-  result.month                 = std::stoi(tok[month]);
-  result.day                   = std::stoi(tok[day]);
-  result.year                  = (result.month == 1 && yearChange) ? CURRENT_DATE.year + 1 : CURRENT_DATE.year;
-  return result;
 }
 
 // File operations
