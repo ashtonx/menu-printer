@@ -14,17 +14,18 @@ struct Date {
   int month;
   int day;
 
-  bool operator>(const Date &b) const
+  bool operator<(const Date &b) const
   {
-    if (year > b.year) return true;
+    if (year < b.year) return true;
     if (year == b.year) {
-      if (month > b.month) return true;
-      if (month == b.month && day > b.day) return true;
+      if (month < b.month) return true;
+      if (month == b.month && day < b.day) return true;
     }
     return false;
   }
-  bool operator<(const Date &b) const { return !(*this > b); }
-  bool operator==(const Date &b) const { return (year == b.year && month == b.month && day == b.day); }
+  bool operator==(const Date &b) const { return year == b.year && month == b.month && day == b.day; }
+  bool operator>(const Date &b) const { return !(*this < b) && !(*this == b); }
+
   bool operator!=(const Date &b) const { return !(*this == b); }
   bool operator<=(const Date &b) const { return (*this < b || *this == b); }
   bool operator>=(const Date &b) const { return (*this > b || *this == b); }
@@ -32,7 +33,7 @@ struct Date {
 
 // File struct
 struct File {
-  enum struct FileType { shoppingList = 0, menu = 1, leftover = -1 };
+  enum struct FileType { shoppingList = 0, menu = 1, leftover = 99 };
   std::string path;
   // type of file
   FileType type;
@@ -57,8 +58,8 @@ struct Data {
     paths.Archive         = paths.WorkingDir / "archive";
 
     // File parsing data
-    fileParsing.fileMask      = { { "fileType", 0 }, { "monthStart", 1 }, { "dayStart", 2 },
-                             { "monthEnd", 3 }, { "dayEnd", 4 },     { "fileExtension", 5 } };
+    fileParsing.fileMask      = { { "fileType", 0 }, { "monthStart", 2 }, { "dayStart", 1 },
+                             { "monthEnd", 4 }, { "dayEnd", 3 },     { "fileExtension", 5 } };
     fileParsing.dateFormat    = "%m.%d";
     fileParsing.delims        = "-.";
     fileParsing.fileExtension = ".pdf";
@@ -108,20 +109,21 @@ struct ShoppingList {
 void test();
 void findFiles(std::vector<File> &files, Data const &settings);
 bool isRecent(std::filesystem::file_time_type const &time, Data const &settings);
-void sortFiles(std::vector<File> &files, Data const &settings);
-File::Date parseDate(std::string_view const &filename, Data const &settings, bool yearChange = false);
+std::vector<size_t> sortFiles(std::vector<File> &files, Data const &settings);
+void processFiles(std::vector<File> &files, std::vector<size_t> const &positions, Data const &settings);
+File::DateRange parseDate(std::string_view const &filename, Data const &settings, bool yearChange = false);
 // Date
 Date getCurrentDate();
 std::vector<std::string> tokenizeString(std::string string, std::string_view delims);
 
-bool checkIfFileIsRecent(std::filesystem::file_time_type fileWriteTime);
-bool checkIfYearChange(std::filesystem::directory_entry const &entry);
+// bool checkIfFileIsRecent(std::filesystem::file_time_type fileWriteTime);
+// bool checkIfYearChange(std::filesystem::directory_entry const &entry);
 int getPageCount(std::filesystem::directory_entry entry);
-void processFiles(std::filesystem::directory_entry shoppingList, std::map<Date, std::filesystem::directory_entry> menu,
-                  std::vector<std::filesystem::directory_entry> leftoverFiles);
 
 // file management
 std::string executeProcess(std::string exec, std::vector<std::string> args);
-std::filesystem::path getBlankPage();
+std::filesystem::path getBlankPage(Data const &settings);
 
+// debug
+void fileStatus(const std::filesystem::path &p, std::filesystem::file_status s);
 #endif
