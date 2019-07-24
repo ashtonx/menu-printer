@@ -7,13 +7,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_FLAGS "-pthread") #for boost
 set(SOURCE
 main.hpp
-# date_processing.cpp
+parse_settings.hpp
 )
 
 add_executable(dietsort main.cpp ${SOURCE})
 
 find_package(Boost 1.69.0 COMPONENTS system REQUIRED)
-
 set(LIBS
 ${Boost_LIBRARIES}
 )

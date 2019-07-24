@@ -1,0 +1,25 @@
+{
+  "paths": {
+    "files_to_sort": "/data/Downloads/Browser",
+    "working_directory": "/data/Downloads/Browser/menu",
+    "tmp_dir": "",
+    "archive": ""
+  },
+  "file_parsing": {
+    "file_mask": [
+      "file_type",
+      "day_start",
+      "month_start",
+      "day_end",
+      "month_end",
+      "file_extension"
+    ],
+    "delims": "-.",
+    "file_type_strings": [
+      "zakupy",
+      "menu"
+    ],
+  },
+  "date_format": "%m.%d",
+  "date_range": "7"
+}

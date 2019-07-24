@@ -33,18 +33,18 @@ struct Date {
 
 // File struct
 struct File {
-  enum struct FileType { shoppingList = 0, menu = 1, leftover = 99 };
+  enum struct FileType { shopping_list = 0, menu = 1, leftover = 99 };
   std::string path;
   // type of file
   FileType type;
   // pages
-  int noPages;
+  int no_of_pages;
   // date
   struct DateRange {
     Date start;
     Date end;
   } date;
-  std::filesystem::file_time_type writeTime;
+  std::filesystem::file_time_type write_time;
 };
 
 // setttings struct
@@ -52,78 +52,49 @@ struct Data {
   Data()
   {
     // Setup paths
-    paths.DownloadedFiles = std::filesystem::path("/data/Downloads/Browser");
-    paths.WorkingDir      = std::filesystem::path("/data/Downloads/Browser/menu");
-    paths.TmpDir          = paths.WorkingDir / ".tmp";
-    paths.Archive         = paths.WorkingDir / "archive";
+    paths.files_to_sort = std::filesystem::path("/data/Downloads/Browser");
+    paths.working_directory      = std::filesystem::path("/data/Downloads/Browser/menu");
+    paths.tmp_dir          = paths.working_directory / ".tmp";
+    paths.archive_dir         = paths.working_directory / "archive";
 
     // File parsing data
-    fileParsing.fileMask      = { { "fileType", 0 }, { "monthStart", 2 }, { "dayStart", 1 },
-                             { "monthEnd", 4 }, { "dayEnd", 3 },     { "fileExtension", 5 } };
-    fileParsing.dateFormat    = "%m.%d";
-    fileParsing.delims        = "-.";
-    fileParsing.fileExtension = ".pdf";
+    file_parsing.file_mask      = { { "file_type", 0 }, { "month_start", 2 }, { "day_start", 1 },
+                             { "month_end", 4 }, { "day_end", 3 },     { "file_extension", 5 } };
+    file_parsing.delims        = "-.";
+    file_parsing.file_extension = ".pdf";
     // 0 shoppinglist 2 menu
-    searchStrings = std::array<std::string_view, 2>({ "zakupy", "menu" });
+    search_strings = std::array<std::string_view, 2>({ "zakupy", "menu" });
     //
-    outOfDateRange = 7;
+    date_range = 7;
   }
 
   struct Paths {
-    std::filesystem::path DownloadedFiles;
-    std::filesystem::path WorkingDir;
-    std::filesystem::path TmpDir;
-    std::filesystem::path Archive;
+    std::filesystem::path files_to_sort;
+    std::filesystem::path working_directory;
+    std::filesystem::path tmp_dir;
+    std::filesystem::path archive_dir;
   } paths;
 
   struct FileParsing {
-    std::map<std::string, int> fileMask;
-    std::string_view dateFormat;
+    std::map<std::string, int> file_mask;
     std::string_view delims;
-    std::string_view fileExtension;
-  } fileParsing;
+    std::string_view file_extension;
+  } file_parsing;
 
-  enum search { shoppingList, menu };
-  std::array<std::string_view, 2> searchStrings;
-  int outOfDateRange;
+  enum Search { shopping_list, menu };
+  std::array<std::string_view, 2> search_strings;
+  int date_range;
 };
 
-enum FOUND_FILES { LIST, MENU, LEFTOVER };
-
-struct ShoppingList {
-  std::string FilePath;
-  std::string MonthStart;
-  std::string MonthEnd;
-  std::string DayStart;
-  std::string DayEnd;
-  int YearStart;
-  int YearEnd;
-  std::filesystem::file_time_type TimeStamp;
-};
-
-// namespace date {
-// enum { DAY_START, MONTH_START, YEAR_START, DAY_END, MONTH_END, YEAR_END };
-// }
-
-// functions
-void test();
-void findFiles(std::vector<File> &files, Data const &settings);
+void FindFiles(std::vector<File> &files, Data const &settings);
 bool isRecent(std::filesystem::file_time_type const &time, Data const &settings);
 std::vector<size_t> sortFiles(std::vector<File> &files, Data const &settings);
 void processFiles(std::vector<File> &files, std::vector<size_t> const &positions, Data const &settings);
-File::DateRange parseDate(std::string_view const &filename, Data const &settings, bool yearChange = false);
-// Date
+File::DateRange parseDate(std::string_view const &filename, Data const &settings, bool year_change = false);
 Date getCurrentDate();
 std::vector<std::string> tokenizeString(std::string string, std::string_view delims);
-
-// bool checkIfFileIsRecent(std::filesystem::file_time_type fileWriteTime);
-// bool checkIfYearChange(std::filesystem::directory_entry const &entry);
 int getPageCount(std::filesystem::directory_entry entry);
-
-// file management
-std::string executeProcess(std::string exec, std::vector<std::string> args);
+std::string executeProcess(std::string const &exec, std::vector<std::string> const &args);
 std::filesystem::path getBlankPage(Data const &settings);
 
-// debug
-void fileStatus(const std::filesystem::path &p, std::filesystem::file_status s);
 #endif
