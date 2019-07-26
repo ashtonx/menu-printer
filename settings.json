@@ -1,9 +1,9 @@
 {
   "paths": {
     "files_to_sort": "/data/Downloads/Browser",
-    "working_directory": "/data/Downloads/Browser/menu",
-    "tmp_dir": "",
-    "archive": ""
+    "working_dir": "/data/Downloads/Browser/menu",
+    "tmp_dir": null,
+    "archive_dir": null
   },
   "file_parsing": {
     "file_mask": [
@@ -15,11 +15,11 @@
       "file_extension"
     ],
     "delims": "-.",
-    "file_type_strings": [
-      "zakupy",
-      "menu"
-    ],
+    "file_extension": ".pdf",
+    "file_type_strings": {
+      "shopping_list": "zakupy",
+      "menu": "menu"
+    }
   },
-  "date_format": "%m.%d",
-  "date_range": "7"
+  "date_range": 20
 }

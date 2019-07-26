@@ -2,11 +2,11 @@
 #define MAIN_HPP
 
 #include <filesystem>
-#include <iostream>
+// #include <iostream>
 #include <map>
 #include <string>
-#include <unordered_map>
-#include <utility>
+// #include <unordered_map>
+// #include <utility>
 #include <vector>
 
 struct Date {
@@ -49,25 +49,6 @@ struct File {
 
 // setttings struct
 struct Data {
-  Data()
-  {
-    // Setup paths
-    paths.files_to_sort = std::filesystem::path("/data/Downloads/Browser");
-    paths.working_directory      = std::filesystem::path("/data/Downloads/Browser/menu");
-    paths.tmp_dir          = paths.working_directory / ".tmp";
-    paths.archive_dir         = paths.working_directory / "archive";
-
-    // File parsing data
-    file_parsing.file_mask      = { { "file_type", 0 }, { "month_start", 2 }, { "day_start", 1 },
-                             { "month_end", 4 }, { "day_end", 3 },     { "file_extension", 5 } };
-    file_parsing.delims        = "-.";
-    file_parsing.file_extension = ".pdf";
-    // 0 shoppinglist 2 menu
-    search_strings = std::array<std::string_view, 2>({ "zakupy", "menu" });
-    //
-    date_range = 7;
-  }
-
   struct Paths {
     std::filesystem::path files_to_sort;
     std::filesystem::path working_directory;
@@ -77,16 +58,16 @@ struct Data {
 
   struct FileParsing {
     std::map<std::string, int> file_mask;
-    std::string_view delims;
-    std::string_view file_extension;
+    std::string delims;
+    std::string file_extension;
   } file_parsing;
 
   enum Search { shopping_list, menu };
-  std::array<std::string_view, 2> search_strings;
+  std::array<std::string, 2> search_strings;
   int date_range;
 };
 
-void FindFiles(std::vector<File> &files, Data const &settings);
+void findFiles(std::vector<File> &files, Data const &settings);
 bool isRecent(std::filesystem::file_time_type const &time, Data const &settings);
 std::vector<size_t> sortFiles(std::vector<File> &files, Data const &settings);
 void processFiles(std::vector<File> &files, std::vector<size_t> const &positions, Data const &settings);
@@ -97,4 +78,5 @@ int getPageCount(std::filesystem::directory_entry entry);
 std::string executeProcess(std::string const &exec, std::vector<std::string> const &args);
 std::filesystem::path getBlankPage(Data const &settings);
 
+void DebugConfig(Data config);
 #endif

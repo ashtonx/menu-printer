@@ -1,5 +1,7 @@
 #include "main.hpp"
-#include <boost/process.hpp>
+#include <boost/process/child.hpp>
+#include <boost/process/io.hpp>
+#include <boost/process/pipe.hpp>
 #include <cassert>
 #include <chrono>
 #include <filesystem>
@@ -7,7 +9,10 @@
 #include <map>
 #include <regex>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
+#include "parse_settings.hpp"
 // overkill app to format and merge downloaded diet pdfs into printable version
 // to learn/practice some c++17 and spend less time preparing printable output
 
@@ -18,6 +23,9 @@ int main()
 {
   // init settings
   Data settings;
+  loadConfig(settings, "settings.json");
+  DebugConfig(settings);
+
   // main data
   std::vector<File> files;
   findFiles(files, settings);
@@ -36,10 +44,10 @@ void findFiles(std::vector<File> &files, Data const &settings)
       for (int i = 0; i < settings.search_strings.size(); ++i) {
         if (entry.path().filename().string().find(settings.search_strings[i]) != std::string::npos) {
           File new_file;
-          new_file.path    = entry.path().string();
-          new_file.type    = isRecent(entry.last_write_time(), settings) ? File::FileType(i) : File::FileType::leftover;
+          new_file.path = entry.path().string();
+          new_file.type = isRecent(entry.last_write_time(), settings) ? File::FileType(i) : File::FileType::leftover;
           new_file.no_of_pages = getPageCount(entry);
-          new_file.write_time = entry.last_write_time();
+          new_file.write_time  = entry.last_write_time();
 
           files.push_back(new_file); // make parse date return File::Date
         }
@@ -65,7 +73,11 @@ std::vector<size_t> sortFiles(std::vector<File> &files, Data const &settings)
       }
     }
   }
-  std::cerr << "shopping list debug: " << files[shopping_list_pos].path << '\n';
+
+  if (shopping_list_pos == -1)
+    std::cerr << "ERROR: not enough recent files\n";
+  else
+    std::cerr << "shopping list debug: " << files[shopping_list_pos].path << '\n';
   files[shopping_list_pos].date =
       parseDate(std::filesystem::path(files[shopping_list_pos].path).filename().string(), settings);
   bool year_change = (files[shopping_list_pos].date.start.month == 12 && files[shopping_list_pos].date.end.month == 1);
@@ -118,7 +130,7 @@ void processFiles(std::vector<File> &files, std::vector<size_t> const &positions
   std::filesystem::create_directory(processing_dir);
 
   for (auto file : processing) {
-    std::filesystem::path file_path{ file.path }; //string to path
+    std::filesystem::path file_path{ file.path }; // string to path
 
     if (file.no_of_pages == 2) {
       std::filesystem::copy_file(file_path, (tmp_dir / file_path.filename()));
@@ -126,9 +138,9 @@ void processFiles(std::vector<File> &files, std::vector<size_t> const &positions
     } else {
       std::filesystem::copy_file(file_path, (processing_dir / file_path.filename()));
       std::filesystem::path blank_page = getBlankPage(settings);
-      std::string output              = (settings.paths.tmp_dir / file_path.filename()).string();
+      std::string output               = (settings.paths.tmp_dir / file_path.filename()).string();
       std::vector<std::string> args{ blank_page.string(), file_path.string(), // merge with blank page
-                                     output };                              // save to tmpDir
+                                     output };                                // save to tmpDir
       executeProcess("pdfunite", args);
       file.path = (output);
     }
@@ -242,6 +254,27 @@ int getPageCount(std::filesystem::directory_entry entry)
 
 std::filesystem::path getBlankPage(Data const &settings)
 {
-    //do it later
+  // do it later
   return settings.paths.working_directory / "blank.pdf";
+}
+
+void DebugConfig(Data config)
+{
+  std::cout << "== CONFIG DEBUG ==\n";
+
+  std::cout << "config.paths: \n"
+            << "\t.files_to_sort: " << config.paths.files_to_sort << '\n'
+            << "\t.working_directory: " << config.paths.working_directory << "\n"
+            << "\t.tmp_dir: " << config.paths.tmp_dir << '\n'
+            << "\t.archive_dir: " << config.paths.archive_dir << '\n';
+
+  std::cout << "config.file_parsing: \n";
+  for (auto e : config.file_parsing.file_mask) {
+    std::cout << "\t.file_mask: [" << e.first << "] == " << e.second << '\n';
+  }
+  std::cout << "\t.delims: " << config.file_parsing.delims << '\n'
+            << "\t.file_extension: " << config.file_parsing.file_extension << '\n';
+
+  std::cout << "search_strings: " << config.search_strings[0] << "\t" << config.search_strings[1] << '\n';
+  std::cout << "date_range: " << config.date_range << '\n';
 }
