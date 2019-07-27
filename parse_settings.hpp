@@ -2,14 +2,18 @@
 #define PARSE_SETTINGS_HPP
 
 #include <fstream>
+#include "data_structs.hpp"
 #include "include/json.hpp"
 #include "iostream"
-#include "main.hpp"
 
 void loadConfig(Data &settings, std::string const &filename)
 {
   using json = nlohmann::json;
   std::ifstream file(filename);
+  if (!file.is_open()) {
+    std::cerr << "ERROR: No settings.json file present\n";
+    exit(1);
+  }
   json config = json::parse(file);
   file.close();
 
@@ -36,9 +40,10 @@ void loadConfig(Data &settings, std::string const &filename)
   } else {
     settings.file_parsing.file_extension = ".pdf";
   }
-  settings.search_strings[Data::Search::shopping_list] =
+  settings.file_parsing.search_strings[Data::Search::shopping_list] =
       config["file_parsing"]["file_type_strings"]["shopping_list"].get<std::string>();
-  settings.search_strings[Data::Search::menu] = config["file_parsing"]["file_type_strings"]["menu"].get<std::string>();
+  settings.file_parsing.search_strings[Data::Search::menu] =
+      config["file_parsing"]["file_type_strings"]["menu"].get<std::string>();
 
   settings.date_range = config["date_range"].get<int>();
 }
