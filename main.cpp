@@ -140,7 +140,7 @@ void processFiles(std::vector<File> const &files, std::vector<size_t> const &pos
   std::filesystem::create_directory(processing_dir);
   std::filesystem::path blank_page = getBlankPage(settings);
 
-  for (auto file : processing) {
+  for (auto &file : processing) {
     std::filesystem::path file_path{ file.path }; // paths stored as strings
     if (file.no_of_pages == 2) {
       std::filesystem::copy_file(file_path, (tmp_dir / file_path.filename()));
@@ -148,7 +148,7 @@ void processFiles(std::vector<File> const &files, std::vector<size_t> const &pos
     } else {
       std::filesystem::copy_file(file_path, (processing_dir / file_path.filename()));
       std::string output = (settings.paths.tmp_dir / file_path.filename()).string();
-      std::vector<std::string> args{ blank_page.string(), file_path.string(), // merge with blank page
+      std::vector<std::string> args{ file_path.string(), blank_page.string(), // merge with blank page
                                      output };                                // save to tmpDir
       executeProcess("pdfunite", args);
       file.path = (output);
