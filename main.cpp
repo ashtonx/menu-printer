@@ -1,7 +1,4 @@
 #include "main.hpp"
-#include <boost/process/child.hpp>
-#include <boost/process/io.hpp>
-#include <boost/process/pipe.hpp>
 #include <chrono>
 #include <filesystem>
 #include <iostream>
@@ -9,6 +6,8 @@
 #include <regex>
 #include <string>
 #include <vector>
+#include "boost_process.cpp"
+
 #include "data_structs.hpp"
 #include "parse_settings.hpp"
 // #include "debug.cpp"

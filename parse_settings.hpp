@@ -3,8 +3,8 @@
 
 #include <fstream>
 #include "data_structs.hpp"
-#include "include/json.hpp"
 #include "iostream"
+#include "json.cpp"
 
 void loadConfig(Data &settings, std::string const &filename)
 {
